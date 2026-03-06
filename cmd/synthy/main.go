@@ -23,6 +23,7 @@ func main() {
 			psql.NewConnection,
 		),
 		fx.Invoke(repositoryEventSubscriberHook),
+		fx.Invoke(psql.NewConnection),
 	).Run()
 }
 
