@@ -1,0 +1,27 @@
+package pipeline
+
+import (
+	"log/slog"
+
+	callgraph "github.com/vibino-xyz/synthy/internal/analysis/callGraph"
+	"github.com/vibino-xyz/synthy/internal/analysis/parser"
+	"github.com/vibino-xyz/synthy/internal/analysis/symbol"
+)
+
+func ProcessRepository(repoPath string) error {
+	pkgs, err := parser.LoadPackages(repoPath)
+	if err != nil {
+		return err
+	}
+
+	symbols := symbol.Extract(pkgs)
+	for _, sym := range symbols {
+		slog.Info("Extracted symbol", "name", sym.Name, "kind", sym.Kind, "startLine", sym.StartLine, "endLine", sym.EndLine)
+	}
+
+	callEdges := callgraph.Build(pkgs)
+	for _, edge := range callEdges {
+		slog.Info("Extracted call edge", "caller", edge.Caller, "callee", edge.Callee)
+	}
+	return nil
+}
