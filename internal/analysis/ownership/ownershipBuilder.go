@@ -13,8 +13,8 @@ func Build(pkgs []*packages.Package) []*app.OwnershipEdge {
 	for _, pkg := range pkgs {
 		for _, file := range pkg.Syntax {
 			ast.Inspect(file, func(n ast.Node) bool {
-				var fn *ast.FuncDecl
-				if fn, ok := n.(*ast.FuncDecl); !ok || fn.Recv == nil {
+				fn, ok := n.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil {
 					return true
 				}
 

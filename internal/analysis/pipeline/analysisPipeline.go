@@ -4,6 +4,8 @@ import (
 	"log/slog"
 
 	callgraph "github.com/vibino-xyz/synthy/internal/analysis/callGraph"
+	importgraph "github.com/vibino-xyz/synthy/internal/analysis/importGraph"
+	"github.com/vibino-xyz/synthy/internal/analysis/ownership"
 	"github.com/vibino-xyz/synthy/internal/analysis/parser"
 	"github.com/vibino-xyz/synthy/internal/analysis/symbol"
 )
@@ -23,5 +25,16 @@ func ProcessRepository(repoPath string) error {
 	for _, edge := range callEdges {
 		slog.Info("Extracted call edge", "caller", edge.Caller, "callee", edge.Callee)
 	}
+
+	importEdges := importgraph.Build(pkgs)
+	for _, edge := range importEdges {
+		slog.Info("Extracted import edge", "importer", edge.Importer, "importee", edge.Importee)
+	}
+
+	ownershipEdges := ownership.Build(pkgs)
+	for _, edge := range ownershipEdges {
+		slog.Info("Extracted ownership edge", "owner", edge.Owner, "child", edge.Child)
+	}
+
 	return nil
 }
