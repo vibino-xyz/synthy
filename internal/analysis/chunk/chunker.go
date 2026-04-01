@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log/slog"
+	"os"
 
 	"github.com/vibino-xyz/synthy/internal/app"
 )
@@ -57,7 +59,7 @@ func buildFunctionChunk(fset *token.FileSet, filePath string, fn *ast.FuncDecl) 
 		Type:         app.ChunkTypeFunction,
 		Name:         fn.Name.Name,
 		FilePath:     filePath,
-		Content:      "", // TODO: Extract the function body as a string
+		Content:      extractSource(fset, fn),
 		StartLine:    start,
 		EndLine:      end,
 		Dependencies: extractDependencies(fn),
@@ -73,7 +75,7 @@ func buildStructChunk(fset *token.FileSet, filePath string, ts *ast.TypeSpec, st
 		Type:         app.ChunkTypeStruct,
 		Name:         ts.Name.Name,
 		FilePath:     filePath,
-		Content:      "",
+		Content:      extractSource(fset, st),
 		StartLine:    start.Line,
 		EndLine:      end.Line,
 		Dependencies: extractDependencies(st),
@@ -89,7 +91,7 @@ func buildInterfaceChunk(fset *token.FileSet, filePath string, ts *ast.TypeSpec,
 		Type:         app.ChunkTypeInterface,
 		Name:         ts.Name.Name,
 		FilePath:     filePath,
-		Content:      "",
+		Content:      extractSource(fset, it),
 		StartLine:    start.Line,
 		EndLine:      end.Line,
 		Dependencies: extractDependencies(it),
@@ -105,7 +107,7 @@ func buildFileChunk(fset *token.FileSet, filePath string, node ast.Node) *app.Ch
 		Type:         app.ChunkTypeFile,
 		Name:         filePath,
 		FilePath:     filePath,
-		Content:      "",
+		Content:      extractSource(fset, node),
 		StartLine:    start.Line,
 		EndLine:      end.Line,
 		Dependencies: extractDependencies(node),
@@ -133,4 +135,47 @@ func extractDependencies(node ast.Node) []string {
 	}
 
 	return result
+}
+
+func extractSource(fset *token.FileSet, node ast.Node) string {
+	if node == nil {
+		return ""
+	}
+
+	start := fset.Position(node.Pos())
+	end := fset.Position(node.End())
+
+	content, err := os.ReadFile(start.Filename)
+	if err != nil {
+		slog.Error("failed to read file content", "error", err)
+		return ""
+	}
+
+	startOffset := offsetFromPosition(content, start)
+	endOffset := offsetFromPosition(content, end)
+
+	if startOffset == -1 || endOffset == -1 || startOffset > endOffset {
+		slog.Error("invalid offsets for source extraction", "startOffset", startOffset, "endOffset", endOffset)
+		return ""
+	}
+
+	return string(content[startOffset:endOffset])
+}
+
+func offsetFromPosition(content []byte, pos token.Position) int {
+	line := 1
+	col := 1
+
+	for i, b := range content {
+		if line == pos.Line && col == pos.Column {
+			return i
+		}
+		if b == '\n' {
+			line++
+			col = 1
+		} else {
+			col++
+		}
+	}
+	return -1
 }

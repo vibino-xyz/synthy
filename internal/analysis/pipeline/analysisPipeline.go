@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	callgraph "github.com/vibino-xyz/synthy/internal/analysis/callGraph"
+	"github.com/vibino-xyz/synthy/internal/analysis/chunk"
 	importgraph "github.com/vibino-xyz/synthy/internal/analysis/importGraph"
 	"github.com/vibino-xyz/synthy/internal/analysis/ownership"
 	"github.com/vibino-xyz/synthy/internal/analysis/parser"
@@ -34,6 +35,15 @@ func ProcessRepository(repoPath string) error {
 	ownershipEdges := ownership.Build(pkgs)
 	for _, edge := range ownershipEdges {
 		slog.Info("Extracted ownership edge", "owner", edge.Owner, "child", edge.Child)
+	}
+
+	chunks, err := chunk.Build(repoPath)
+	if err != nil {
+		slog.Error("Failed to build chunks", "error", err)
+		return err
+	}
+	for _, c := range chunks {
+		slog.Info("Extracted chunk", "name", c.Name, "type", c.Type, "filePath", c.FilePath, "startLine", c.StartLine, "endLine", c.EndLine)
 	}
 
 	return nil
