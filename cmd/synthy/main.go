@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/vibino-xyz/synthy/internal/controller/mq"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 	"github.com/vibino-xyz/synthy/internal/infra/rabbimq"
+	"github.com/vibino-xyz/synthy/internal/interface/mq"
 	"go.uber.org/fx"
 )
 
@@ -17,7 +17,9 @@ func main() {
 		),
 		fx.Provide(
 			rabbimq.NewConn,
-			rabbimq.NewRepositoryEventSubscriber,
+			rabbimq.NewIngestionSubscriber,
+			rabbimq.NewEmbeddingEventPublisher,
+			rabbimq.NewEmbeddingSubscriber,
 		),
 		fx.Provide(
 			psql.NewConnection,
