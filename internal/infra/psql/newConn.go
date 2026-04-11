@@ -29,8 +29,6 @@ func NewConnection() (*pgxpool.Pool, error) {
 		return nil, err
 	}
 
-	defer dbPool.Close()
-
 	slog.Info("Connected to database successfully")
 	return dbPool, nil
 }

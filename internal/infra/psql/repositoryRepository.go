@@ -71,3 +71,35 @@ func (r *repositoryRepository) InsertRepository(ctx context.Context, repo *repos
 
 	return repositoryId, err
 }
+
+func (r *repositoryRepository) GetRepositoryByExternalID(ctx context.Context, externalID string) (*repository.Repository, error) {
+	const query = `SELECT id, organization_id, name, description, default_branch, repository_url, storage_url, provider, external_id, created_at, updated_at FROM repository WHERE external_id = $1`
+
+	var result repository.Repository
+	err := r.db.QueryRow(ctx, query, externalID).Scan(
+		&result.ID,
+		&result.OrganizationID,
+		&result.Name,
+		&result.Description,
+		&result.DefaultBranch,
+		&result.RepositoryUrl,
+		&result.StorageUrl,
+		&result.Provider,
+		&result.ExternalId,
+		&result.CreatedAt,
+		&result.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &result, nil
+}
+
+func (r *repositoryRepository) DeleteRepositoryByID(ctx context.Context, id string) error {
+	const query = `DELETE FROM repository WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, id)
+	return err
+}

@@ -1,14 +1,26 @@
 package chunker
 
 import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"time"
+
+	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
 )
 
+// Build parses filePath and returns code chunks for every function, struct, and
+// interface declaration it contains. The returned chunks have Content, ContentHash,
+// Type, StartLine, and EndLine populated; the remaining DB fields are filled in by
+// ChunkService.ProcessFile.
 func Build(filePath string) ([]*CodeChunk, error) {
 	fset := token.NewFileSet()
 
@@ -22,18 +34,16 @@ func Build(filePath string) ([]*CodeChunk, error) {
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch decl := n.(type) {
 		case *ast.FuncDecl:
-			chunks = append(chunks, buildFunctionChunk(fset, filePath, decl))
+			chunks = append(chunks, buildFunctionChunk(fset, decl))
 		case *ast.GenDecl:
 			for _, spec := range decl.Specs {
 				switch s := spec.(type) {
 				case *ast.TypeSpec:
 					switch t := s.Type.(type) {
-
 					case *ast.StructType:
-						chunks = append(chunks, buildStructChunk(fset, filePath, s, t))
-
+						chunks = append(chunks, buildStructChunk(fset, s, t))
 					case *ast.InterfaceType:
-						chunks = append(chunks, buildInterfaceChunk(fset, filePath, s, t))
+						chunks = append(chunks, buildInterfaceChunk(fset, s, t))
 					}
 				}
 			}
@@ -42,69 +52,132 @@ func Build(filePath string) ([]*CodeChunk, error) {
 	})
 
 	if len(chunks) == 0 {
-		chunks = append(chunks, buildFileChunk(fset, filePath, node))
+		chunks = append(chunks, buildFileChunk(fset, node))
 	}
 
 	return chunks, nil
 }
 
-func buildFunctionChunk(fset *token.FileSet, filePath string, fn *ast.FuncDecl) *CodeChunk {
-	_ = fset.Position(fn.Pos()).Line
-	_ = fset.Position(fn.End()).Line
-
-	return &CodeChunk{
-		// TODO
-	}
+type ChunkService struct {
+	repo ChunkRepository
 }
 
-func buildStructChunk(fset *token.FileSet, filePath string, ts *ast.TypeSpec, st *ast.StructType) *CodeChunk {
-	_ = fset.Position(ts.Pos())
-	_ = fset.Position(ts.End())
-
-	return &CodeChunk{
-		// TODO
-	}
+func NewChunkService(repo ChunkRepository) *ChunkService {
+	return &ChunkService{repo: repo}
 }
 
-func buildInterfaceChunk(fset *token.FileSet, filePath string, ts *ast.TypeSpec, it *ast.InterfaceType) *CodeChunk {
-	_ = fset.Position(ts.Pos())
-	_ = fset.Position(ts.End())
-
-	return &CodeChunk{
-		// TODO
+// ProcessFile builds chunks for filePath, matches each chunk to a symbol by line
+// overlap, fills in the DB fields, persists them, and returns the saved chunks.
+func (s *ChunkService) ProcessFile(ctx context.Context, repositoryID, fileID, filePath string, fileSymbols []*csymbol.Symbol) ([]*CodeChunk, error) {
+	rawChunks, err := Build(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("build chunks for %s: %w", filePath, err)
 	}
-}
 
-func buildFileChunk(fset *token.FileSet, filePath string, node ast.Node) *CodeChunk {
-	_ = fset.Position(node.Pos())
-	_ = fset.Position(node.End())
-
-	return &CodeChunk{
-		// TODO
+	lang := LanguageOther
+	if filepath.Ext(filePath) == ".go" {
+		lang = LanguageGo
 	}
-}
 
-func extractDependencies(node ast.Node) []string {
-	dependencies := make(map[string]struct{})
-
-	ast.Inspect(node, func(n ast.Node) bool {
-		switch x := n.(type) {
-		case *ast.Ident:
-			dependencies[x.Name] = struct{}{}
-		case *ast.SelectorExpr:
-			if ident, ok := x.X.(*ast.Ident); ok {
-				dependencies[fmt.Sprintf("%s.%s", ident.Name, x.Sel.Name)] = struct{}{}
-			}
+	var chunks []*CodeChunk
+	for _, chunk := range rawChunks {
+		sym := matchSymbol(fileSymbols, chunk.StartLine, chunk.EndLine)
+		if sym == nil {
+			continue // symbol_id is NOT NULL; skip unmatched chunks
 		}
-		return true
-	})
 
-	var result []string
-	for dependency := range dependencies {
-		result = append(result, dependency)
+		id, err := generateID()
+		if err != nil {
+			return nil, err
+		}
+
+		now := time.Now().UTC()
+		chunk.ID = id
+		chunk.RepositoryID = repositoryID
+		chunk.FileID = fileID
+		chunk.SymbolID = sym.ID
+		chunk.Language = lang
+		chunk.CreatedAt = now
+		chunk.UpdatedAt = now
+
+		chunks = append(chunks, chunk)
 	}
 
-	return result
+	if len(chunks) == 0 {
+		return chunks, nil
+	}
+
+	if err := s.repo.InsertChunks(ctx, chunks); err != nil {
+		return nil, fmt.Errorf("insert chunks: %w", err)
+	}
+
+	return chunks, nil
+}
+
+// matchSymbol returns the symbol whose line range fully contains [startLine, endLine].
+func matchSymbol(symbols []*csymbol.Symbol, startLine, endLine int) *csymbol.Symbol {
+	for _, sym := range symbols {
+		if sym.StartLine <= startLine && sym.EndLine >= endLine {
+			return sym
+		}
+	}
+	return nil
+}
+
+func buildFunctionChunk(fset *token.FileSet, fn *ast.FuncDecl) *CodeChunk {
+	startLine := fset.Position(fn.Pos()).Line
+	endLine := fset.Position(fn.End()).Line
+	content := extractSource(fset, fn)
+
+	return &CodeChunk{
+		Content:     content,
+		ContentHash: sha256hex(content),
+		Type:        ChunkTypeFunction,
+		StartLine:   startLine,
+		EndLine:     endLine,
+	}
+}
+
+func buildStructChunk(fset *token.FileSet, ts *ast.TypeSpec, _ *ast.StructType) *CodeChunk {
+	startLine := fset.Position(ts.Pos()).Line
+	endLine := fset.Position(ts.End()).Line
+	content := extractSource(fset, ts)
+
+	return &CodeChunk{
+		Content:     content,
+		ContentHash: sha256hex(content),
+		Type:        ChunkTypeType,
+		StartLine:   startLine,
+		EndLine:     endLine,
+	}
+}
+
+func buildInterfaceChunk(fset *token.FileSet, ts *ast.TypeSpec, _ *ast.InterfaceType) *CodeChunk {
+	startLine := fset.Position(ts.Pos()).Line
+	endLine := fset.Position(ts.End()).Line
+	content := extractSource(fset, ts)
+
+	return &CodeChunk{
+		Content:     content,
+		ContentHash: sha256hex(content),
+		Type:        ChunkTypeType,
+		StartLine:   startLine,
+		EndLine:     endLine,
+	}
+}
+
+func buildFileChunk(fset *token.FileSet, node ast.Node) *CodeChunk {
+	startLine := fset.Position(node.Pos()).Line
+	endLine := fset.Position(node.End()).Line
+	content := extractSource(fset, node)
+
+	return &CodeChunk{
+		Content:     content,
+		ContentHash: sha256hex(content),
+		Type:        ChunkTypeOther,
+		StartLine:   startLine,
+		EndLine:     endLine,
+	}
 }
 
 func extractSource(fset *token.FileSet, node ast.Node) string {
@@ -148,4 +221,17 @@ func offsetFromPosition(content []byte, pos token.Position) int {
 		}
 	}
 	return -1
+}
+
+func sha256hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+func generateID() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate id: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
