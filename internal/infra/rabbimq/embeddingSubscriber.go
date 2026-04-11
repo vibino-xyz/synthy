@@ -16,7 +16,9 @@ type EmbeddingSubscriberAdapter struct {
 	ch   *amqp.Channel
 }
 
-func NewEmbeddingSubscriber(conn *amqp.Connection) (embedding.EmbeddingSubscriber, error) {
+// pub is required to ensure the exchange and queues are declared before this
+// subscriber starts consuming.
+func NewEmbeddingSubscriber(conn *amqp.Connection, _ embedding.EmbeddingPublisher) (embedding.EmbeddingSubscriber, error) {
 	ch, err := conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to open channel: %w", err)
