@@ -10,6 +10,7 @@ import (
 
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
+	"github.com/vibino-xyz/synthy/internal/core/embedding"
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
 	"github.com/vibino-xyz/synthy/internal/core/imports"
 	"github.com/vibino-xyz/synthy/internal/core/repository"
@@ -17,12 +18,13 @@ import (
 )
 
 type AnalysisPipeline struct {
-	fileService   *cfile.FileService
-	symbolService *csymbol.SymbolService
-	callService   *calls.CallEdgeService
-	importService *imports.ImportEdgeService
-	chunkService  *chunker.ChunkService
-	repoRepo      repository.RepositoryRepository
+	fileService        *cfile.FileService
+	symbolService      *csymbol.SymbolService
+	callService        *calls.CallEdgeService
+	importService      *imports.ImportEdgeService
+	chunkService       *chunker.ChunkService
+	repoRepo           repository.RepositoryRepository
+	embeddingPublisher embedding.EmbeddingPublisher
 }
 
 func NewAnalysisPipeline(
@@ -32,14 +34,16 @@ func NewAnalysisPipeline(
 	importService *imports.ImportEdgeService,
 	chunkService *chunker.ChunkService,
 	repoRepo repository.RepositoryRepository,
+	embeddingPublisher embedding.EmbeddingPublisher,
 ) *AnalysisPipeline {
 	return &AnalysisPipeline{
-		fileService:   fileService,
-		symbolService: symbolService,
-		callService:   callService,
-		importService: importService,
-		chunkService:  chunkService,
-		repoRepo:      repoRepo,
+		fileService:        fileService,
+		symbolService:      symbolService,
+		callService:        callService,
+		importService:      importService,
+		chunkService:       chunkService,
+		repoRepo:           repoRepo,
+		embeddingPublisher: embeddingPublisher,
 	}
 }
 
@@ -125,6 +129,21 @@ func (p *AnalysisPipeline) ProcessRepository(ctx context.Context, repoPath, orga
 			return fmt.Errorf("process chunks for %s: %w", filePath, err)
 		}
 		totalChunks += len(chunks)
+
+		// Push chunks to embedding exchange for embeddings and summary generation.
+		for _, c := range chunks {
+			req := embedding.EmbeddingPublisherRequest{
+				RepositoryId: repo.ID,
+				ChunkId:      c.ID,
+			}
+			// It's for test, so will remove this later.
+			if p.embeddingPublisher == nil {
+				continue
+			}
+			if err := p.embeddingPublisher.PublishEmbedding(ctx, req); err != nil {
+				return fmt.Errorf("publish chunk for %s: %w", filePath, err)
+			}
+		}
 	}
 	slog.InfoContext(ctx, "processed chunks", "count", totalChunks)
 

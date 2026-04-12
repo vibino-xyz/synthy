@@ -35,6 +35,7 @@ func TestProcessRepository(t *testing.T) {
 		imports.NewImportEdgeService(psql.NewImportEdgeRepository(db)),
 		chunker.NewChunkService(psql.NewChunkRepository(db)),
 		psql.NewRepositoryRepository(db),
+		nil, // Replace with a valid EmbeddingPublisher implementation
 	)
 
 	if err := pipeline.ProcessRepository(ctx, repoPath, orgID); err != nil {

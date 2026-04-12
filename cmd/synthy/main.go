@@ -4,13 +4,14 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/joho/godotenv"
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
-	"github.com/vibino-xyz/synthy/internal/core/embedding"
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
 	"github.com/vibino-xyz/synthy/internal/core/imports"
 	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
 	"github.com/vibino-xyz/synthy/internal/infra/llm/ollama"
+	"github.com/vibino-xyz/synthy/internal/infra/pinecone"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 	"github.com/vibino-xyz/synthy/internal/infra/rabbimq"
 	"github.com/vibino-xyz/synthy/internal/infra/shttp"
@@ -21,6 +22,7 @@ import (
 
 func main() {
 	fx.New(
+		fx.Invoke(godotenv.Load),
 		// Infrastructure — HTTP client (shared)
 		fx.Provide(
 			shttp.NewClient,
@@ -38,6 +40,7 @@ func main() {
 			rabbimq.NewIngestionSubscriber,
 			rabbimq.NewEmbeddingPublisher,
 			rabbimq.NewEmbeddingSubscriber,
+			rabbimq.NewSummarySubscriber,
 		),
 
 		// Infrastructure — database
@@ -65,13 +68,21 @@ func main() {
 			analysis.NewAnalysisPipeline,
 		),
 
+		fx.Provide(
+			pinecone.NewConnection,
+			pinecone.NewPineconeRepository,
+		),
+
 		// Interface controllers
 		fx.Provide(
 			mq.NewRepositoryEventController,
+			mq.NewEmbeddingEventController,
+			mq.NewSummaryEventController,
 		),
 
 		fx.Invoke(repositoryEventSubscriberHook),
-		fx.Invoke(embeddingSubscriberHook),
+		fx.Invoke(embeddingEventControllerHook),
+		fx.Invoke(summaryEventControllerHook),
 	).Run()
 }
 
@@ -94,28 +105,38 @@ func repositoryEventSubscriberHook(lc fx.Lifecycle, controller *mq.RepositoryEve
 	})
 }
 
-func embeddingSubscriberHook(lc fx.Lifecycle, sub embedding.EmbeddingSubscriber) {
+func embeddingEventControllerHook(lc fx.Lifecycle, controller *mq.EmbeddingEventController) {
 	ctx, cancel := context.WithCancel(context.Background())
 	lc.Append(fx.Hook{
 		OnStart: func(_ context.Context) error {
 			go func() {
-				messages, err := sub.Subscribe(ctx)
-				if err != nil {
-					slog.Error("failed to subscribe to embedding events", "error", err)
-					return
-				}
-				for msg := range messages {
-					slog.Info("received embedding event", "event", msg.Message)
-					if err := msg.Ack(); err != nil {
-						slog.Error("failed to ack embedding event", "error", err)
-					}
+				if err := controller.Start(ctx); err != nil {
+					slog.ErrorContext(ctx, "Unable to start embedding event controller", "error", err)
 				}
 			}()
 			return nil
 		},
 		OnStop: func(_ context.Context) error {
 			cancel()
-			return sub.Close()
+			return controller.Stop()
+		},
+	})
+}
+
+func summaryEventControllerHook(lc fx.Lifecycle, controller *mq.SummaryEventController) {
+	ctx, cancel := context.WithCancel(context.Background())
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			go func() {
+				if err := controller.Start(ctx); err != nil {
+					slog.ErrorContext(ctx, "Unable to start summary event controller", "error", err)
+				}
+			}()
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			cancel()
+			return controller.Stop()
 		},
 	})
 }

@@ -3,7 +3,7 @@ package llm
 import "context"
 
 type EmbeddingClient interface {
-	GenerateEmbeddings(ctx context.Context, input string) ([]float64, error)
+	GenerateEmbeddings(ctx context.Context, input string) ([]float32, error)
 }
 
 type LLMClient interface {

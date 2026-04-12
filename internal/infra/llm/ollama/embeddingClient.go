@@ -30,10 +30,10 @@ type embedRequest struct {
 }
 
 type embedResponse struct {
-	Embeddings [][]float64 `json:"embeddings"`
+	Embeddings [][]float32 `json:"embeddings"`
 }
 
-func (e *EmbeddingClient) GenerateEmbeddings(ctx context.Context, input string) ([]float64, error) {
+func (e *EmbeddingClient) GenerateEmbeddings(ctx context.Context, input string) ([]float32, error) {
 	body, err := json.Marshal(embedRequest{Model: e.model, Input: input})
 	if err != nil {
 		return nil, fmt.Errorf("marshal embed request: %w", err)

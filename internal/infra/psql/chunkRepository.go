@@ -63,6 +63,25 @@ func (r *chunkRepository) GetChunksByFileID(ctx context.Context, fileID string) 
 	return r.queryChunks(ctx, query, fileID)
 }
 
+func (r *chunkRepository) GetChunkByID(ctx context.Context, chunkID string) (*chunker.CodeChunk, error) {
+	const query = `
+		SELECT id, repository_id, file_id, symbol_id,
+		       content, content_hash, type, language,
+		       start_line, end_line, embedding_id, summary,
+		       created_at, updated_at
+		FROM code_chunk
+		WHERE id = $1`
+
+	chunks, err := r.queryChunks(ctx, query, chunkID)
+	if err != nil {
+		return nil, err
+	}
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	return chunks[0], nil
+}
+
 func (r *chunkRepository) GetChunksByRepositoryID(ctx context.Context, repositoryID string) ([]*chunker.CodeChunk, error) {
 	const query = `
 		SELECT id, repository_id, file_id, symbol_id,
@@ -73,6 +92,20 @@ func (r *chunkRepository) GetChunksByRepositoryID(ctx context.Context, repositor
 		WHERE repository_id = $1`
 
 	return r.queryChunks(ctx, query, repositoryID)
+}
+
+func (r *chunkRepository) GetChunksWithoutEmbedding(ctx context.Context, limit int) ([]*chunker.CodeChunk, error) {
+	const query = `
+		SELECT id, repository_id, file_id, symbol_id,
+		       content, content_hash, type, language,
+		       start_line, end_line, embedding_id, summary,
+		       created_at, updated_at
+		FROM code_chunk
+		WHERE embedding_id IS NULL
+		ORDER BY created_at ASC
+		LIMIT $1`
+
+	return r.queryChunks(ctx, query, limit)
 }
 
 func (r *chunkRepository) UpdateChunkEmbeddingID(ctx context.Context, chunkID, embeddingID string) error {
