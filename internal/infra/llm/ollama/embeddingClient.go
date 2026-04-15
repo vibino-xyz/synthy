@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/vibino-xyz/synthy/internal/core/llm"
 )
@@ -18,8 +19,8 @@ type EmbeddingClient struct {
 
 func NewEmbeddingClient(httpClient *http.Client) llm.EmbeddingClient {
 	return &EmbeddingClient{
-		baseURL: "http://100.79.224.15:11434",
-		model:   "nomic-embed-text:latest",
+		baseURL: os.Getenv("EMBEDDING_CLIENT_BASE_URL"),
+		model:   os.Getenv("EMBEDDING_CLIENT_MODEL"),
 		http:    httpClient,
 	}
 }

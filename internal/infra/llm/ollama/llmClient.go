@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/vibino-xyz/synthy/internal/core/llm"
 )
@@ -18,8 +19,8 @@ type LLMClient struct {
 
 func NewLLMClient(httpClient *http.Client) llm.LLMClient {
 	return &LLMClient{
-		baseURL: "http://localhost:11434",
-		model:   "qwen3-coder:30b",
+		baseURL: os.Getenv("LLM_CLIENT_BASE_URL"),
+		model:   os.Getenv("LLM_CLIENT_MODEL"),
 		http:    httpClient,
 	}
 }
@@ -35,7 +36,33 @@ type generateResponse struct {
 }
 
 func (c *LLMClient) GenerateSummary(ctx context.Context, input string) (string, error) {
-	prompt := "Summarize the following code concisely, focusing on its purpose and key behaviour:\n\n" + input
+	prompt := fmt.Sprintf(`You are analyzing a code chunk.
+
+Goal:
+Generate a concise, retrieval-optimized summary.
+
+Instructions:
+- Describe what the code does in terms of behavior and purpose
+- Include specific identifiers when relevant:
+  - table names, struct/class names, key functions, external APIs
+- Mention key operations (e.g., SELECT, INSERT, HTTP call, validation, transformation)
+- Focus on what makes this code unique
+
+Strict rules:
+- Max 60 words
+- Single paragraph
+- NO generic phrases like:
+  - "this function"
+  - "this code"
+  - "key concepts include"
+- NO fluff, explanations, or repetition
+- Do NOT restate obvious things like "handles database operations"
+
+Output:
+Return only the summary text.
+
+Code:
+%s`, input)
 
 	body, err := json.Marshal(generateRequest{Model: c.model, Prompt: prompt, Stream: false})
 	if err != nil {

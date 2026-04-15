@@ -22,7 +22,7 @@ func TestEmbeddingSummary(t *testing.T) {
 
 	chunkRepo := psql.NewChunkRepository(db)
 
-	chunks, err := chunkRepo.GetChunksWithoutEmbedding(ctx, 10)
+	chunks, err := chunkRepo.GetChunksWithoutEmbedding(ctx, 5)
 	if err != nil {
 		t.Fatalf("fetch chunks without embedding: %v", err)
 	}

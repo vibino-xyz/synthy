@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"log/slog"
+	"os"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
@@ -16,7 +17,7 @@ import (
 var migrations embed.FS
 
 func NewConnection() (*pgxpool.Pool, error) {
-	connectionString := "postgres://postgres:password@localhost:5432/synthy"
+	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
 
 	if err := runMigrations(connectionString); err != nil {
 		slog.Error("Failed to run database migrations", "error", err)

@@ -47,7 +47,7 @@ func (c *EmbeddingEventController) Start(ctx context.Context) error {
 			continue
 		}
 
-		slog.InfoContext(ctx, "Generated embeddings for chunk", "chunk_id", chunk.ID, "embedding_length", len(resp))
+		slog.InfoContext(ctx, "Generated embeddings for chunk", "chunk_id", chunk.ID, "embedding_length", len(resp), "embeddings", resp)
 
 		id, err := c.idxConnection.UpsertEmbeddings(ctx, resp, map[string]any{"chunk_id": chunk.ID}, "argo")
 		if err != nil {

@@ -13,7 +13,7 @@ func NewConnection() (*pinecone.IndexConnection, error) {
 		ApiKey: os.Getenv("PINECONE_API_KEY"),
 	})
 	if err != nil {
-		slog.Error("Failed to create Client: %v", err)
+		slog.Error("Failed to create Client", "error", err)
 		return nil, err
 	}
 
@@ -21,7 +21,7 @@ func NewConnection() (*pinecone.IndexConnection, error) {
 		Host: os.Getenv("PINECONE_HOST"),
 	})
 	if err != nil {
-		slog.Error("Failed to connect to index: %v", err)
+		slog.Error("Failed to connect to index", "error", err)
 		return nil, err
 	}
 

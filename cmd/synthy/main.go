@@ -81,7 +81,7 @@ func main() {
 		),
 
 		fx.Invoke(repositoryEventSubscriberHook),
-		fx.Invoke(embeddingEventControllerHook),
+		// fx.Invoke(embeddingEventControllerHook),
 		fx.Invoke(summaryEventControllerHook),
 	).Run()
 }
