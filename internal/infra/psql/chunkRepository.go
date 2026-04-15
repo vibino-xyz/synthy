@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -108,9 +109,28 @@ func (r *chunkRepository) GetChunksWithoutEmbedding(ctx context.Context, limit i
 	return r.queryChunks(ctx, query, limit)
 }
 
-func (r *chunkRepository) UpdateChunkEmbeddingID(ctx context.Context, chunkID, embeddingID string) error {
-	const query = `UPDATE code_chunk SET embedding_id = $1 WHERE id = $2`
-	_, err := r.db.Exec(ctx, query, embeddingID, chunkID)
+func (r *chunkRepository) UpdateChunk(ctx context.Context, chunkID string, req chunker.UpdateChunkRequest) error {
+	var setClauses []string
+	var args []any
+	i := 1
+
+	if req.EmbeddingID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("embedding_id = $%d", i))
+		args = append(args, *req.EmbeddingID)
+		i++
+	}
+	if req.Summary != nil {
+		setClauses = append(setClauses, fmt.Sprintf("summary = $%d", i))
+		args = append(args, *req.Summary)
+		i++
+	}
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	args = append(args, chunkID)
+	query := fmt.Sprintf("UPDATE code_chunk SET %s WHERE id = $%d", strings.Join(setClauses, ", "), i)
+	_, err := r.db.Exec(ctx, query, args...)
 	return err
 }
 

@@ -47,6 +47,12 @@ func (c *SummaryEventController) Start(ctx context.Context) error {
 
 		slog.InfoContext(ctx, "Generated summary", "summary", resp)
 
+		if err := c.chunkRepository.UpdateChunk(ctx, chunk.ID, chunker.UpdateChunkRequest{Summary: &resp}); err != nil {
+			slog.ErrorContext(ctx, "failed to update chunk summary", "error", err)
+			continue
+		}
+		slog.InfoContext(ctx, "Updated chunk summary in database", "chunk_id", chunk.ID)
+
 		if ackErr := msg.Ack(); ackErr != nil {
 			slog.ErrorContext(ctx, "failed to ack summary event", "error", ackErr)
 		} else {
