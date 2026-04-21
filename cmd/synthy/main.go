@@ -18,6 +18,7 @@ import (
 	"github.com/vibino-xyz/synthy/internal/interface/api"
 	"github.com/vibino-xyz/synthy/internal/interface/mq"
 	"github.com/vibino-xyz/synthy/internal/usecase/analysis"
+	"github.com/vibino-xyz/synthy/internal/usecase/retrieval"
 	"go.uber.org/fx"
 )
 
@@ -67,6 +68,7 @@ func main() {
 		// Use-cases
 		fx.Provide(
 			analysis.NewAnalysisPipeline,
+			retrieval.NewRetrievalPipeline,
 		),
 
 		fx.Provide(
@@ -94,7 +96,7 @@ func main() {
 
 		fx.Invoke(httpServerHook),
 		fx.Invoke(repositoryEventSubscriberHook),
-		// fx.Invoke(embeddingEventControllerHook),
+		fx.Invoke(embeddingEventControllerHook),
 		fx.Invoke(summaryEventControllerHook),
 	).Run()
 }

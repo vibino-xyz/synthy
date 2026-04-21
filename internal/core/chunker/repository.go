@@ -15,4 +15,5 @@ type ChunkRepository interface {
 	GetChunksWithoutEmbedding(ctx context.Context, limit int) ([]*CodeChunk, error)
 	UpdateChunk(ctx context.Context, chunkID string, req UpdateChunkRequest) error
 	DeleteChunksByRepositoryID(ctx context.Context, repositoryID string) error
+	GetChunksByEmbeddingIDs(ctx context.Context, embeddingIDs []string) ([]*CodeChunk, error)
 }

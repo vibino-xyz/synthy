@@ -92,3 +92,46 @@ Code:
 
 	return result.Response, nil
 }
+
+func (c *LLMClient) GenerateResponse(ctx context.Context, query string, context string) (string, error) {
+	prompt := fmt.Sprintf(`You are a coding assistant answering questions about a codebase.
+
+Context:
+%s
+
+Question:
+%s
+
+Instructions:
+- Answer based strictly on the provided context
+- Reference specific functions, types, or files when relevant
+- Be concise and precise`, context, query)
+
+	body, err := json.Marshal(generateRequest{Model: c.model, Prompt: prompt, Stream: false})
+	if err != nil {
+		return "", fmt.Errorf("marshal generate request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/generate", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create generate request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("generate request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("generate request failed with status %d", resp.StatusCode)
+	}
+
+	var result generateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode generate response: %w", err)
+	}
+
+	return result.Response, nil
+}

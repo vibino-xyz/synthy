@@ -4,13 +4,21 @@ import (
 	"context"
 	"testing"
 
+	"github.com/joho/godotenv"
 	"github.com/vibino-xyz/synthy/internal/core/embedding"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 )
 
+func loadEnv() {
+	if err := godotenv.Load("../../../.env"); err != nil {
+		panic("Error loading .env file")
+	}
+}
+
 // TestEmbeddingSummary fetches the first 10 chunks that have not yet been embedded
 // and publishes each one to the embedding exchange.
 func TestEmbeddingSummary(t *testing.T) {
+	loadEnv()
 	ctx := context.Background()
 
 	// ── database ──────────────────────────────────────────────────────────────
@@ -22,7 +30,7 @@ func TestEmbeddingSummary(t *testing.T) {
 
 	chunkRepo := psql.NewChunkRepository(db)
 
-	chunks, err := chunkRepo.GetChunksWithoutEmbedding(ctx, 5)
+	chunks, err := chunkRepo.GetChunksWithoutEmbedding(ctx, 324)
 	if err != nil {
 		t.Fatalf("fetch chunks without embedding: %v", err)
 	}

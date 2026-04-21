@@ -140,6 +140,45 @@ func (r *chunkRepository) DeleteChunksByRepositoryID(ctx context.Context, reposi
 	return err
 }
 
+func (r *chunkRepository) GetChunksByEmbeddingIDs(ctx context.Context, embeddingIDs []string) ([]*chunker.CodeChunk, error) {
+	if len(embeddingIDs) == 0 {
+		return nil, nil
+	}
+
+	const query = `
+		SELECT id, repository_id, file_id, symbol_id,
+		       content, content_hash, type, language,
+		       start_line, end_line, embedding_id, summary,
+		       created_at, updated_at
+		FROM code_chunk
+		WHERE embedding_id = ANY($1)`
+
+	rows, err := r.db.Query(ctx, query, embeddingIDs)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer rows.Close()
+
+	var chunks []*chunker.CodeChunk
+	for rows.Next() {
+		var c chunker.CodeChunk
+		if err := rows.Scan(
+			&c.ID, &c.RepositoryID, &c.FileID, &c.SymbolID,
+			&c.Content, &c.ContentHash, &c.Type, &c.Language,
+			&c.StartLine, &c.EndLine, &c.EmbeddingID, &c.Summary,
+			&c.CreatedAt, &c.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		chunks = append(chunks, &c)
+	}
+
+	return chunks, rows.Err()
+}
+
 func (r *chunkRepository) queryChunks(ctx context.Context, query string, arg interface{}) ([]*chunker.CodeChunk, error) {
 	rows, err := r.db.Query(ctx, query, arg)
 	if err != nil {

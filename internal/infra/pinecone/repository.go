@@ -42,3 +42,23 @@ func (r *pineconeRepository) UpsertEmbeddings(ctx context.Context, embeddings []
 
 	return id, nil
 }
+
+func (r *pineconeRepository) QuerySimilarVectors(ctx context.Context, queryEmbedding []float32, topK int, namespace string) ([]string, error) {
+
+	queryRequest := &pinecone.QueryByVectorValuesRequest{
+		Vector: queryEmbedding,
+		TopK:   uint32(topK),
+	}
+
+	response, err := r.idxConnection.WithNamespace(namespace).QueryByVectorValues(ctx, queryRequest)
+	if err != nil {
+		return nil, err
+	}
+
+	embeddingIds := make([]string, 0, len(response.Matches))
+	for _, match := range response.Matches {
+		embeddingIds = append(embeddingIds, match.Vector.Id)
+	}
+
+	return embeddingIds, nil
+}
