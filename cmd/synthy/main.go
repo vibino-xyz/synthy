@@ -5,12 +5,14 @@ import (
 	"log/slog"
 
 	"github.com/joho/godotenv"
+	"github.com/vibino-xyz/commons/ratelimit"
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
 	"github.com/vibino-xyz/synthy/internal/core/imports"
 	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
 	"github.com/vibino-xyz/synthy/internal/infra/llm/ollama"
+	"github.com/vibino-xyz/synthy/internal/infra/llm/voyage"
 	"github.com/vibino-xyz/synthy/internal/infra/pinecone"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 	"github.com/vibino-xyz/synthy/internal/infra/rabbimq"
@@ -25,15 +27,19 @@ import (
 func main() {
 	fx.New(
 		fx.Invoke(godotenv.Load),
-		// Infrastructure — HTTP client (shared)
 		fx.Provide(
 			shttp.NewClient,
 		),
 
-		// Infrastructure — LLM
+		fx.Provide(
+			voyage.NewRateLimitConfig,
+			ratelimit.New,
+		),
+
 		fx.Provide(
 			ollama.NewLLMClient,
-			ollama.NewEmbeddingClient,
+			//ollama.NewEmbeddingClient,
+			voyage.NewEmbeddingClient,
 		),
 
 		// Infrastructure — message queue

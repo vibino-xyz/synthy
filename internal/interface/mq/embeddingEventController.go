@@ -41,7 +41,7 @@ func (c *EmbeddingEventController) Start(ctx context.Context) error {
 			continue
 		}
 
-		resp, err := c.embeddingClient.GenerateEmbeddings(ctx, chunk.Content)
+		resp, err := c.embeddingClient.GenerateEmbeddings(ctx, chunk.Content, llm.InputTypeDocument)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to generate embeddings", "error", err)
 			continue

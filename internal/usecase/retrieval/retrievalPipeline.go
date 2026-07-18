@@ -49,13 +49,13 @@ type RetrievalContext struct {
 
 func (p *RetrievalPipeline) ProcessRetrieval(ctx context.Context, query string) (*RetrievalContext, error) {
 	slog.Info("Query received", "q", query)
-	embeddings, err := p.EmbeddingClient.GenerateEmbeddings(ctx, query)
+	embeddings, err := p.EmbeddingClient.GenerateEmbeddings(ctx, query, llm.InputTypeQuery)
 	if err != nil {
 		slog.Error("Failed to generate embeddings", "error", err)
 		return nil, err
 	}
 
-	similarEmbeddingIDs, err := p.idxConnection.QuerySimilarVectors(ctx, embeddings, 5, "__default__")
+	similarEmbeddingIDs, err := p.idxConnection.QuerySimilarVectors(ctx, embeddings, 7, "__default__")
 	if err != nil {
 		slog.Error("Failed to query similar vectors", "error", err)
 		return nil, err
