@@ -17,7 +17,6 @@ import (
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 	"github.com/vibino-xyz/synthy/internal/infra/rabbimq"
 	"github.com/vibino-xyz/synthy/internal/infra/shttp"
-	"github.com/vibino-xyz/synthy/internal/interface/api"
 	"github.com/vibino-xyz/synthy/internal/interface/mq"
 	"github.com/vibino-xyz/synthy/internal/usecase/analysis"
 	"github.com/vibino-xyz/synthy/internal/usecase/retrieval"
@@ -82,17 +81,6 @@ func main() {
 			pinecone.NewPineconeRepository,
 		),
 
-		// HTTP server
-		fx.Provide(
-			shttp.NewServeMux,
-			shttp.NewServer,
-		),
-
-		// Interface controllers — HTTP
-		fx.Provide(
-			api.NewQueryController,
-		),
-
 		// Interface controllers — MQ
 		fx.Provide(
 			mq.NewRepositoryEventController,
@@ -100,27 +88,10 @@ func main() {
 			mq.NewSummaryEventController,
 		),
 
-		fx.Invoke(httpServerHook),
 		fx.Invoke(repositoryEventSubscriberHook),
 		fx.Invoke(embeddingEventControllerHook),
 		fx.Invoke(summaryEventControllerHook),
 	).Run()
-}
-
-func httpServerHook(lc fx.Lifecycle, server *shttp.Server, _ *api.QueryController) {
-	lc.Append(fx.Hook{
-		OnStart: func(_ context.Context) error {
-			go func() {
-				if err := server.Start(); err != nil {
-					slog.Error("HTTP server stopped", "error", err)
-				}
-			}()
-			return nil
-		},
-		OnStop: func(ctx context.Context) error {
-			return server.Stop(ctx)
-		},
-	})
 }
 
 func repositoryEventSubscriberHook(lc fx.Lifecycle, controller *mq.RepositoryEventController) {
