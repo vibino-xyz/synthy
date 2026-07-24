@@ -5,20 +5,25 @@ import (
 	"log/slog"
 
 	"github.com/joho/godotenv"
+	"github.com/vibino-xyz/commons/jwtauth"
 	"github.com/vibino-xyz/commons/ratelimit"
+	"github.com/vibino-xyz/commons/whttp"
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
 	"github.com/vibino-xyz/synthy/internal/core/imports"
 	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
-	"github.com/vibino-xyz/synthy/internal/infra/llm/ollama"
+	ghapi "github.com/vibino-xyz/synthy/internal/infra/github"
+	"github.com/vibino-xyz/synthy/internal/infra/llm/claude"
 	"github.com/vibino-xyz/synthy/internal/infra/llm/voyage"
 	"github.com/vibino-xyz/synthy/internal/infra/pinecone"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
 	"github.com/vibino-xyz/synthy/internal/infra/rabbimq"
 	"github.com/vibino-xyz/synthy/internal/infra/shttp"
+	"github.com/vibino-xyz/synthy/internal/interface/api"
 	"github.com/vibino-xyz/synthy/internal/interface/mq"
 	"github.com/vibino-xyz/synthy/internal/usecase/analysis"
+	ghuse "github.com/vibino-xyz/synthy/internal/usecase/github"
 	"github.com/vibino-xyz/synthy/internal/usecase/retrieval"
 	"go.uber.org/fx"
 )
@@ -36,9 +41,10 @@ func main() {
 		),
 
 		fx.Provide(
-			ollama.NewLLMClient,
+			//ollama.NewLLMClient,
 			//ollama.NewEmbeddingClient,
 			voyage.NewEmbeddingClient,
+			claude.NewClaudeCodeClient,
 		),
 
 		// Infrastructure — message queue
@@ -59,6 +65,22 @@ func main() {
 			psql.NewCallEdgeRepository,
 			psql.NewImportEdgeRepository,
 			psql.NewChunkRepository,
+			psql.NewGithubInstallationRepository,
+		),
+
+		// GitHub App integration (dashboard-facing: connect + list repos)
+		fx.Provide(
+			jwtauth.NewVerifierFromEnv,
+			ghapi.NewConfigFromEnv,
+			ghapi.NewClient,
+			ghuse.NewService,
+		),
+
+		// Interface controllers — HTTP
+		whttp.DefaultServer(
+			whttp.WithControllers(
+				api.NewGitHubController,
+			),
 		),
 
 		// Domain services
