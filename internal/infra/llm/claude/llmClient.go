@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/vibino-xyz/synthy/internal/core/llm"
@@ -15,10 +16,10 @@ type ClaudeCodeClient struct {
 	Model      string
 }
 
-func NewClaudeCodeClient(binaryPath, model string) llm.LLMClient {
+func NewClaudeCodeClient() llm.LLMClient {
 	return &ClaudeCodeClient{
-		BinaryPath: binaryPath,
-		Model:      model,
+		BinaryPath: os.Getenv("CLAUDE_BINARY_PATH"),
+		Model:      os.Getenv("CLAUDE_MODEL"),
 	}
 }
 
