@@ -72,6 +72,41 @@ func (r *repositoryRepository) InsertRepository(ctx context.Context, repo *repos
 	return repositoryId, err
 }
 
+func (r *repositoryRepository) ListRepositoriesByOrganizationID(ctx context.Context, organizationID string) ([]*repository.Repository, error) {
+	const query = `SELECT id, organization_id, name, description, default_branch, repository_url, storage_url, provider, external_id, created_at, updated_at FROM repository WHERE organization_id = $1 ORDER BY created_at DESC`
+
+	rows, err := r.db.Query(ctx, query, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var repositories []*repository.Repository
+	for rows.Next() {
+		var result repository.Repository
+		if err := rows.Scan(
+			&result.ID,
+			&result.OrganizationID,
+			&result.Name,
+			&result.Description,
+			&result.DefaultBranch,
+			&result.RepositoryUrl,
+			&result.StorageUrl,
+			&result.Provider,
+			&result.ExternalId,
+			&result.CreatedAt,
+			&result.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		repositories = append(repositories, &result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return repositories, nil
+}
+
 func (r *repositoryRepository) GetRepositoryByExternalID(ctx context.Context, externalID string) (*repository.Repository, error) {
 	const query = `SELECT id, organization_id, name, description, default_branch, repository_url, storage_url, provider, external_id, created_at, updated_at FROM repository WHERE external_id = $1`
 

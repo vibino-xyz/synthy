@@ -10,12 +10,14 @@ const (
 )
 
 type IngestionMessage struct {
-	Provider      RepositoryProvider `json:"provider"`
-	EventType     IngestionEventType `json:"event_type"`
-	RepositoryID  int64              `json:"repository_id"`
-	RepoFullName  string             `json:"repo_full_name"`
-	DefaultBranch string             `json:"default_branch"`
-	CloneURL      string             `json:"clone_url"`
+	Provider       RepositoryProvider `json:"provider"`
+	EventType      IngestionEventType `json:"event_type"`
+	RepositoryID   int64              `json:"repository_id"`
+	RepoFullName   string             `json:"repo_full_name"`
+	DefaultBranch  string             `json:"default_branch"`
+	CloneURL       string             `json:"clone_url"`
+	InstallationID int64              `json:"installation_id"`
+	OrganizationID string             `json:"organization_id"`
 }
 
 func (r *IngestionMessage) FromProto(c *contracts.RepositoryEventMessage) error {
@@ -25,17 +27,21 @@ func (r *IngestionMessage) FromProto(c *contracts.RepositoryEventMessage) error 
 	r.RepoFullName = c.RepoFullName
 	r.DefaultBranch = c.DefaultBranch
 	r.CloneURL = c.CloneUrl
+	r.InstallationID = c.InstallationId
+	r.OrganizationID = c.OrganizationId
 	return nil
 }
 
 func (r *IngestionMessage) ToProto() (*contracts.RepositoryEventMessage, error) {
 	return &contracts.RepositoryEventMessage{
-		Provider:      convertToProtoRepositoryProvider(r.Provider),
-		EventType:     convertToProtoIngestionEventType(r.EventType),
-		RepositoryId:  r.RepositoryID,
-		RepoFullName:  r.RepoFullName,
-		DefaultBranch: r.DefaultBranch,
-		CloneUrl:      r.CloneURL,
+		Provider:       convertToProtoRepositoryProvider(r.Provider),
+		EventType:      convertToProtoIngestionEventType(r.EventType),
+		RepositoryId:   r.RepositoryID,
+		RepoFullName:   r.RepoFullName,
+		DefaultBranch:  r.DefaultBranch,
+		CloneUrl:       r.CloneURL,
+		InstallationId: r.InstallationID,
+		OrganizationId: r.OrganizationID,
 	}, nil
 }
 

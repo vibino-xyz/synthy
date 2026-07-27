@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"path/filepath"
 
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
@@ -47,10 +46,22 @@ func NewAnalysisPipeline(
 	}
 }
 
-func (p *AnalysisPipeline) ProcessRepository(ctx context.Context, repoPath, organizationID string) error {
+// RepositoryInput describes the repository being indexed. repoPath (a separate
+// arg) is where its code currently lives on disk; these fields are its stable
+// identity, persisted on the repository record.
+type RepositoryInput struct {
+	OrganizationID string
+	ExternalID     string // stable id (e.g. the GitHub repo id) used for dedup
+	Name           string // e.g. "vibino-xyz/commons"
+	DefaultBranch  string
+	RepositoryURL  string // remote url
+	Provider       repository.RepositoryProvider
+}
 
-	// Delete existing repository
-	existing, err := p.repoRepo.GetRepositoryByExternalID(ctx, repoPath)
+func (p *AnalysisPipeline) ProcessRepository(ctx context.Context, repoPath string, in RepositoryInput) error {
+
+	// Delete existing repository (re-index replaces the previous graph).
+	existing, err := p.repoRepo.GetRepositoryByExternalID(ctx, in.ExternalID)
 	if err != nil {
 		return fmt.Errorf("check existing repository: %w", err)
 	}
@@ -67,22 +78,29 @@ func (p *AnalysisPipeline) ProcessRepository(ctx context.Context, repoPath, orga
 		return err
 	}
 
-	name := filepath.Base(repoPath)
+	defaultBranch := in.DefaultBranch
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+	provider := in.Provider
+	if provider == "" {
+		provider = repository.RepositoryProviderOther
+	}
 	repo := &repository.Repository{
 		ID:             id,
-		OrganizationID: organizationID,
-		Name:           name,
-		DefaultBranch:  "main",
-		RepositoryUrl:  repoPath,
+		OrganizationID: in.OrganizationID,
+		Name:           in.Name,
+		DefaultBranch:  defaultBranch,
+		RepositoryUrl:  in.RepositoryURL,
 		StorageUrl:     repoPath,
-		Provider:       repository.RepositoryProviderOther,
-		ExternalId:     repoPath,
+		Provider:       provider,
+		ExternalId:     in.ExternalID,
 	}
 
 	if _, err := p.repoRepo.InsertRepository(ctx, repo); err != nil {
 		return fmt.Errorf("insert repository: %w", err)
 	}
-	slog.InfoContext(ctx, "created repository record", "id", repo.ID, "name", name)
+	slog.InfoContext(ctx, "created repository record", "id", repo.ID, "name", repo.Name)
 
 	// Load packages
 	pkgs, err := cfile.LoadPackages(repoPath)

@@ -33,6 +33,7 @@ type Repo struct {
 	DefaultBranch string  `json:"default_branch"`
 	Language      *string `json:"language"`
 	HTMLURL       string  `json:"html_url"`
+	CloneURL      string  `json:"clone_url"`
 	PushedAt      string  `json:"pushed_at"`
 }
 
@@ -82,6 +83,15 @@ func NewClient(cfg Config) *Client {
 }
 
 func (c *Client) Configured() bool { return c.ok }
+
+// InstallationToken returns a short-lived installation access token, used to
+// authenticate git clones of the installation's repositories.
+func (c *Client) InstallationToken(ctx context.Context, installationID int64) (string, error) {
+	if !c.ok {
+		return "", ErrNotConfigured
+	}
+	return ghinstallation.NewFromAppsTransport(c.appsTransport, installationID).Token(ctx)
+}
 
 // installationClient returns a go-github client authenticated as the given
 // installation, reusing it (and its cached token) across calls.
@@ -233,6 +243,7 @@ func toRepo(r *github.Repository) Repo {
 		DefaultBranch: r.GetDefaultBranch(),
 		Language:      r.Language,
 		HTMLURL:       r.GetHTMLURL(),
+		CloneURL:      r.GetCloneURL(),
 		PushedAt:      pushedAt(r),
 	}
 }

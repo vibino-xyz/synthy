@@ -27,7 +27,9 @@ func (c *GitHubController) Register(e *echo.Echo) {
 	g.POST("/connect", c.handleConnect)
 	g.DELETE("/connection", c.handleDisconnect)
 	g.GET("/repositories", c.handleRepositories)
+	g.GET("/repositories/indexed", c.handleIndexedRepositories)
 	g.GET("/branches", c.handleBranches)
+	g.POST("/index", c.handleIndex)
 }
 
 func (c *GitHubController) handleConnection(ctx *echo.Context) error {
@@ -108,6 +110,18 @@ func (c *GitHubController) handleRepositories(ctx *echo.Context) error {
 	return ctx.JSON(http.StatusOK, map[string]any{"repositories": repos})
 }
 
+func (c *GitHubController) handleIndexedRepositories(ctx *echo.Context) error {
+	claims, err := jwtauth.RequireMember(ctx)
+	if err != nil {
+		return err
+	}
+	repos, err := c.service.ListIndexedRepositories(ctx.Request().Context(), claims.OrganizationId)
+	if err != nil {
+		return githubError(err)
+	}
+	return ctx.JSON(http.StatusOK, map[string]any{"repositories": repos})
+}
+
 func (c *GitHubController) handleBranches(ctx *echo.Context) error {
 	claims, err := jwtauth.RequireMember(ctx)
 	if err != nil {
@@ -125,4 +139,16 @@ func (c *GitHubController) handleBranches(ctx *echo.Context) error {
 		branches = []string{}
 	}
 	return ctx.JSON(http.StatusOK, map[string]any{"branches": branches})
+}
+
+func (c *GitHubController) handleIndex(ctx *echo.Context) error {
+	claims, err := jwtauth.RequireManager(ctx)
+	if err != nil {
+		return err
+	}
+	queued, err := c.service.IndexConnectedRepositories(ctx.Request().Context(), claims.OrganizationId)
+	if err != nil {
+		return githubError(err)
+	}
+	return ctx.JSON(http.StatusAccepted, map[string]any{"queued": queued})
 }

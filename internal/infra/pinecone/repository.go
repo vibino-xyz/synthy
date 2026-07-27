@@ -62,3 +62,9 @@ func (r *pineconeRepository) QuerySimilarVectors(ctx context.Context, queryEmbed
 
 	return embeddingIds, nil
 }
+
+func (r *pineconeRepository) DeleteVectors(ctx context.Context, ids []string, namespace string) error {
+	err := r.idxConnection.WithNamespace(namespace).DeleteVectorsById(ctx, ids)
+
+	return err
+}

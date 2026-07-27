@@ -13,8 +13,9 @@ import (
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
 	"github.com/vibino-xyz/synthy/internal/core/imports"
 	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
+	gitx "github.com/vibino-xyz/synthy/internal/infra/git"
 	ghapi "github.com/vibino-xyz/synthy/internal/infra/github"
-	"github.com/vibino-xyz/synthy/internal/infra/llm/claude"
+	"github.com/vibino-xyz/synthy/internal/infra/llm/ollama"
 	"github.com/vibino-xyz/synthy/internal/infra/llm/voyage"
 	"github.com/vibino-xyz/synthy/internal/infra/pinecone"
 	"github.com/vibino-xyz/synthy/internal/infra/psql"
@@ -22,6 +23,7 @@ import (
 	"github.com/vibino-xyz/synthy/internal/infra/shttp"
 	"github.com/vibino-xyz/synthy/internal/interface/api"
 	"github.com/vibino-xyz/synthy/internal/interface/mq"
+	"github.com/vibino-xyz/synthy/internal/interface/rpc"
 	"github.com/vibino-xyz/synthy/internal/usecase/analysis"
 	ghuse "github.com/vibino-xyz/synthy/internal/usecase/github"
 	"github.com/vibino-xyz/synthy/internal/usecase/retrieval"
@@ -41,16 +43,17 @@ func main() {
 		),
 
 		fx.Provide(
-			//ollama.NewLLMClient,
+			ollama.NewLLMClient,
 			//ollama.NewEmbeddingClient,
 			voyage.NewEmbeddingClient,
-			claude.NewClaudeCodeClient,
+			//claude.NewClaudeCodeClient,
 		),
 
 		// Infrastructure — message queue
 		fx.Provide(
 			rabbimq.NewConn,
 			rabbimq.NewIngestionSubscriber,
+			rabbimq.NewRepositoryEventPublisher,
 			rabbimq.NewEmbeddingPublisher,
 			rabbimq.NewEmbeddingSubscriber,
 			rabbimq.NewSummarySubscriber,
@@ -76,6 +79,11 @@ func main() {
 			ghuse.NewService,
 		),
 
+		// Repository cloning (for the index worker)
+		fx.Provide(
+			gitx.NewCloner,
+		),
+
 		// Interface controllers — HTTP
 		whttp.DefaultServer(
 			whttp.WithControllers(
@@ -97,6 +105,13 @@ func main() {
 			analysis.NewAnalysisPipeline,
 			retrieval.NewRetrievalPipeline,
 		),
+
+		// Interface controllers — gRPC (query engine / compass calls in here)
+		fx.Provide(
+			rpc.NewRetrievalServer,
+			rpc.NewGRPCServer,
+		),
+		fx.Invoke(rpc.StartGRPCServer),
 
 		fx.Provide(
 			pinecone.NewConnection,

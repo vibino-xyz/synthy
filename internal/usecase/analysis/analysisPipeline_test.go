@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/joho/godotenv"
@@ -58,7 +59,13 @@ func TestProcessRepository(t *testing.T) {
 		embeddingPublisher, // Use a no-op publisher for testing
 	)
 
-	if err := pipeline.ProcessRepository(ctx, repoPath, orgID); err != nil {
+	if err := pipeline.ProcessRepository(ctx, repoPath, RepositoryInput{
+		OrganizationID: orgID,
+		ExternalID:     repoPath,
+		Name:           filepath.Base(repoPath),
+		DefaultBranch:  "main",
+		RepositoryURL:  repoPath,
+	}); err != nil {
 		t.Fatalf("failed to process repository: %v", err)
 	}
 

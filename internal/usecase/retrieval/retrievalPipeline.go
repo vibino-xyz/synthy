@@ -13,9 +13,19 @@ import (
 	"github.com/vibino-xyz/synthy/internal/core/llm"
 )
 
+// defaultTopK is the number of nearest chunks retrieved when the caller does
+// not specify a limit.
+const defaultTopK = 7
+
+// retrievalNamespace is the pinecone namespace queried for similar vectors. It
+// MUST match the namespace the ingestion pipeline upserts into
+// (see interface/mq/embeddingEventController.go). Per-tenant namespacing is a
+// future change that has to be applied on both the ingest and retrieval sides
+// together.
+const retrievalNamespace = "__default__"
+
 type RetrievalPipeline struct {
 	EmbeddingClient      llm.EmbeddingClient
-	LLMClient            llm.LLMClient
 	ChunkRepository      chunker.ChunkRepository
 	CallEdgeRepository   calls.CallEdgeRepository
 	ImportEdgeRepository imports.ImportEdgeRepository
@@ -24,7 +34,6 @@ type RetrievalPipeline struct {
 
 func NewRetrievalPipeline(
 	embeddingClient llm.EmbeddingClient,
-	llmClient llm.LLMClient,
 	chunkRepository chunker.ChunkRepository,
 	callEdgeRepository calls.CallEdgeRepository,
 	importEdgeRepository imports.ImportEdgeRepository,
@@ -32,7 +41,6 @@ func NewRetrievalPipeline(
 ) *RetrievalPipeline {
 	return &RetrievalPipeline{
 		EmbeddingClient:      embeddingClient,
-		LLMClient:            llmClient,
 		ChunkRepository:      chunkRepository,
 		CallEdgeRepository:   callEdgeRepository,
 		ImportEdgeRepository: importEdgeRepository,
@@ -45,43 +53,41 @@ type RetrievalContext struct {
 	// Formatted is the full context string built from retrieved chunks, call
 	// edges, and import edges.
 	Formatted string
+	// Chunks are the raw chunks that back Formatted, exposed for citations and
+	// cross-source ranking by the caller.
+	Chunks []*chunker.CodeChunk
 }
 
-func (p *RetrievalPipeline) ProcessRetrieval(ctx context.Context, query string) (*RetrievalContext, error) {
-	slog.Info("Query received", "q", query)
+// Retrieve embeds the query, finds the nearest code chunks in the vector index
+// and assembles them (with their call and import edges) into an LLM-ready
+// context. It performs no generation — the caller owns the LLM step. Passing
+// topK <= 0 uses defaultTopK.
+func (p *RetrievalPipeline) Retrieve(ctx context.Context, query string, topK int) (*RetrievalContext, error) {
+	if topK <= 0 {
+		topK = defaultTopK
+	}
+
+	slog.InfoContext(ctx, "Retrieval query received", "q", query, "topK", topK)
 	embeddings, err := p.EmbeddingClient.GenerateEmbeddings(ctx, query, llm.InputTypeQuery)
 	if err != nil {
-		slog.Error("Failed to generate embeddings", "error", err)
+		slog.ErrorContext(ctx, "Failed to generate embeddings", "error", err)
 		return nil, err
 	}
 
-	similarEmbeddingIDs, err := p.idxConnection.QuerySimilarVectors(ctx, embeddings, 7, "__default__")
+	similarEmbeddingIDs, err := p.idxConnection.QuerySimilarVectors(ctx, embeddings, topK, retrievalNamespace)
 	if err != nil {
-		slog.Error("Failed to query similar vectors", "error", err)
+		slog.ErrorContext(ctx, "Failed to query similar vectors", "error", err)
 		return nil, err
 	}
 
 	chunks, err := p.ChunkRepository.GetChunksByEmbeddingIDs(ctx, similarEmbeddingIDs)
 	if err != nil {
-		slog.Error("Failed to get chunks by embedding IDs", "error", err)
+		slog.ErrorContext(ctx, "Failed to get chunks by embedding IDs", "error", err)
 		return nil, err
 	}
 
-	slog.Info("Built items", "similar embedding ids", similarEmbeddingIDs, "chunks", chunks)
-	rctx, err := p.buildContext(ctx, chunks)
-	if err != nil {
-		return nil, err
-	}
-
-	slog.InfoContext(ctx, "Retrieved context", "context", rctx)
-	resp, err := p.LLMClient.GenerateResponse(ctx, query, rctx.Formatted)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Println("LLM Response:", resp)
-
-	return rctx, nil
+	slog.InfoContext(ctx, "Retrieved chunks", "similarEmbeddingIDs", similarEmbeddingIDs, "chunkCount", len(chunks))
+	return p.buildContext(ctx, chunks)
 }
 
 // buildContext assembles a structured context string from code chunks together
@@ -153,5 +159,5 @@ func (p *RetrievalPipeline) buildContext(ctx context.Context, chunks []*chunker.
 		sb.WriteString("\n")
 	}
 
-	return &RetrievalContext{Formatted: sb.String()}, nil
+	return &RetrievalContext{Formatted: sb.String(), Chunks: chunks}, nil
 }
