@@ -53,6 +53,25 @@ func (r *githubInstallationRepository) GetByOrganization(ctx context.Context, or
 	return &i, nil
 }
 
+func (r *githubInstallationRepository) GetByInstallationId(ctx context.Context, installationId int64) (*github.Installation, error) {
+	const query = `
+		SELECT id, organization_id, installation_id, account_login, account_type, created_at, updated_at
+		FROM github_installation
+		WHERE installation_id = $1`
+
+	var i github.Installation
+	err := r.db.QueryRow(ctx, query, installationId).Scan(
+		&i.Id, &i.OrganizationId, &i.InstallationId, &i.AccountLogin, &i.AccountType, &i.CreatedAt, &i.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &i, nil
+}
+
 func (r *githubInstallationRepository) DeleteByOrganization(ctx context.Context, organizationId string) error {
 	const query = `DELETE FROM github_installation WHERE organization_id = $1`
 	_, err := r.db.Exec(ctx, query, organizationId)
