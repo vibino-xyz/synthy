@@ -4,8 +4,6 @@ import "time"
 
 const IDPrefix = "ghi"
 
-// Installation records that an organization has installed the Vibino GitHub
-// App, and which GitHub account (org or user) it was installed on.
 type Installation struct {
 	Id             string    `json:"id" db:"id"`
 	OrganizationId string    `json:"organization_id" db:"organization_id"`
