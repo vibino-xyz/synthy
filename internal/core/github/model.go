@@ -2,7 +2,7 @@ package github
 
 import "time"
 
-const IDPrefix = "ghi" // github_installation ids
+const IDPrefix = "ghi"
 
 // Installation records that an organization has installed the Vibino GitHub
 // App, and which GitHub account (org or user) it was installed on.
