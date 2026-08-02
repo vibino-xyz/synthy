@@ -7,5 +7,6 @@ type InstallationRepository interface {
 	// previous one (an org can only have a single active installation).
 	Upsert(ctx context.Context, installation *Installation) error
 	GetByOrganization(ctx context.Context, organizationId string) (*Installation, error)
+	GetByInstallationId(ctx context.Context, installationId int64) (*Installation, error)
 	DeleteByOrganization(ctx context.Context, organizationId string) error
 }

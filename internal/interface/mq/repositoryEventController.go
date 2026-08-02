@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/vibino-xyz/synthy/internal/core/github"
 	"github.com/vibino-xyz/synthy/internal/core/repository"
 	gitx "github.com/vibino-xyz/synthy/internal/infra/git"
 	ghapi "github.com/vibino-xyz/synthy/internal/infra/github"
@@ -16,10 +17,11 @@ import (
 // full-index pipeline: mint an installation token, clone the repo, then hand
 // the working tree to the analysis pipeline.
 type RepositoryEventController struct {
-	ingestionEventSubscriber repository.IngestionSubscriber
-	pipeline                 *analysis.AnalysisPipeline
-	github                   *ghapi.Client
-	cloner                   *gitx.Cloner
+	ingestionEventSubscriber     repository.IngestionSubscriber
+	pipeline                     *analysis.AnalysisPipeline
+	github                       *ghapi.Client
+	cloner                       *gitx.Cloner
+	githubInstallationRepository github.InstallationRepository
 }
 
 func NewRepositoryEventController(
@@ -27,12 +29,14 @@ func NewRepositoryEventController(
 	pipeline *analysis.AnalysisPipeline,
 	github *ghapi.Client,
 	cloner *gitx.Cloner,
+	githubInstallationRepository github.InstallationRepository,
 ) *RepositoryEventController {
 	return &RepositoryEventController{
-		ingestionEventSubscriber: ingestionEventSubscriber,
-		pipeline:                 pipeline,
-		github:                   github,
-		cloner:                   cloner,
+		ingestionEventSubscriber:     ingestionEventSubscriber,
+		pipeline:                     pipeline,
+		github:                       github,
+		cloner:                       cloner,
+		githubInstallationRepository: githubInstallationRepository,
 	}
 }
 
@@ -72,6 +76,14 @@ func (c *RepositoryEventController) handle(ctx context.Context, m *repository.In
 			return fmt.Errorf("mint installation token: %w", err)
 		}
 		token = minted
+	}
+
+	if m.OrganizationID == "" && m.InstallationID != 0 {
+		installation, err := c.githubInstallationRepository.GetByInstallationId(ctx, m.InstallationID)
+		if err != nil {
+			return fmt.Errorf("get installation by id: %w", err)
+		}
+		m.OrganizationID = installation.OrganizationId
 	}
 
 	path, cleanup, err := c.cloner.Clone(ctx, m.CloneURL, m.DefaultBranch, m.RepoFullName, token)
