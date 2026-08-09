@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/vibino-xyz/synthy/internal/core/llm"
 )
@@ -35,6 +36,10 @@ type embedResponse struct {
 }
 
 func (e *EmbeddingClient) GenerateEmbeddings(ctx context.Context, input string, _ llm.InputType) ([]float32, error) {
+	if strings.TrimSpace(input) == "" {
+		return nil, llm.ErrEmptyInput
+	}
+
 	body, err := json.Marshal(embedRequest{Model: e.model, Input: input})
 	if err != nil {
 		return nil, fmt.Errorf("marshal embed request: %w", err)

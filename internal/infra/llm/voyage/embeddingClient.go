@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/vibino-xyz/commons/ratelimit"
 	"github.com/vibino-xyz/synthy/internal/core/llm"
@@ -69,6 +70,10 @@ type embedResponse struct {
 }
 
 func (e EmbeddingClient) GenerateEmbeddings(ctx context.Context, input string, inputType llm.InputType) ([]float32, error) {
+	if strings.TrimSpace(input) == "" {
+		return nil, llm.ErrEmptyInput
+	}
+
 	if err := e.limiter.Wait(ctx, ratelimit.EstimateTokens(input)); err != nil {
 		return nil, fmt.Errorf("voyage rate limit: %w", err)
 	}

@@ -49,12 +49,7 @@ func (c *RepositoryEventController) Start(ctx context.Context) error {
 
 	for msg := range messages {
 		if err := c.handle(ctx, msg.Message); err != nil {
-			slog.ErrorContext(ctx, "failed to index repository", "repo", msg.Message.RepoFullName, "error", err)
-			// Don't requeue: a bad clone/parse will keep failing. The queue's
-			// dead-letter exchange captures it for inspection.
-			if nackErr := msg.Nack(false); nackErr != nil {
-				slog.ErrorContext(ctx, "failed to nack repository event", "error", nackErr)
-			}
+			fail(ctx, msg, "failed to index repository", err, "repo", msg.Message.RepoFullName)
 			continue
 		}
 		if ackErr := msg.Ack(); ackErr != nil {
@@ -65,7 +60,8 @@ func (c *RepositoryEventController) Start(ctx context.Context) error {
 }
 
 func (c *RepositoryEventController) handle(ctx context.Context, m *repository.IngestionMessage) error {
-	slog.InfoContext(ctx, "indexing repository", "repo", m.RepoFullName, "branch", m.DefaultBranch)
+	slog.InfoContext(ctx, "indexing repository",
+		"repo", m.RepoFullName, "branch", m.DefaultBranch, "event_type", m.EventType)
 
 	// Private repos need an installation token to clone. Tokenless jobs clone
 	// anonymously (public repos / a future webhook without an installation).
@@ -78,12 +74,23 @@ func (c *RepositoryEventController) handle(ctx context.Context, m *repository.In
 		token = minted
 	}
 
+	// Webhooks carry a GitHub installation id but no Vibino organization id;
+	// the mapping only exists here, recorded when the org connected the App.
 	if m.OrganizationID == "" && m.InstallationID != 0 {
 		installation, err := c.githubInstallationRepository.GetByInstallationId(ctx, m.InstallationID)
 		if err != nil {
 			return fmt.Errorf("get installation by id: %w", err)
 		}
+		if installation == nil {
+			// Not an error we can retry past: nobody has connected this
+			// installation, so there is no tenant to index into.
+			return fmt.Errorf("no organization connected for installation %d", m.InstallationID)
+		}
 		m.OrganizationID = installation.OrganizationId
+	}
+
+	if m.OrganizationID == "" {
+		return fmt.Errorf("cannot index %s: no organization id on the event", m.RepoFullName)
 	}
 
 	path, cleanup, err := c.cloner.Clone(ctx, m.CloneURL, m.DefaultBranch, m.RepoFullName, token)
@@ -99,6 +106,9 @@ func (c *RepositoryEventController) handle(ctx context.Context, m *repository.In
 		DefaultBranch:  m.DefaultBranch,
 		RepositoryURL:  m.CloneURL,
 		Provider:       m.Provider,
+		Incremental:    m.EventType == repository.IngestionEventTypeIncrementalIndex,
+		ChangedPaths:   m.ChangedPaths,
+		RemovedPaths:   m.RemovedPaths,
 	}); err != nil {
 		return fmt.Errorf("process repository: %w", err)
 	}

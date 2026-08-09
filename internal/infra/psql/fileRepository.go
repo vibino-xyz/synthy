@@ -81,3 +81,9 @@ func (r *fileRepository) DeleteFilesByRepositoryID(ctx context.Context, reposito
 	_, err := r.db.Exec(ctx, query, repositoryID)
 	return err
 }
+
+func (r *fileRepository) DeleteFileByID(ctx context.Context, id string) error {
+	const query = `DELETE FROM file WHERE id = $1`
+	_, err := r.db.Exec(ctx, query, id)
+	return err
+}

@@ -43,7 +43,15 @@ func NewFileService(repo FileRepository) *FileService {
 
 // ProcessFiles derives a File record for every Go source file found in pkgs,
 // persists each one, and returns a map from absolute file path to the saved File.
-func (s *FileService) ProcessFiles(ctx context.Context, repositoryID string, pkgs []*packages.Package) (map[string]*File, error) {
+//
+// only, when non-nil, restricts processing to those absolute paths — an
+// incremental index reprocesses just the files a push touched.
+//
+// The map is keyed by absolute path because that is what go/token reports, but
+// File.Path is stored relative to repoRoot: the clone lives in a fresh temp
+// directory on every run, so an absolute path could never match the same file
+// across two indexes.
+func (s *FileService) ProcessFiles(ctx context.Context, repositoryID, repoRoot string, pkgs []*packages.Package, only map[string]bool) (map[string]*File, error) {
 	fileMap := make(map[string]*File)
 
 	for _, pkg := range pkgs {
@@ -51,6 +59,14 @@ func (s *FileService) ProcessFiles(ctx context.Context, repositoryID string, pkg
 			filePath := pkg.Fset.File(f.Pos()).Name()
 			if _, ok := fileMap[filePath]; ok {
 				continue
+			}
+			if only != nil && !only[filePath] {
+				continue
+			}
+
+			relPath, err := RelPath(repoRoot, filePath)
+			if err != nil {
+				return nil, err
 			}
 
 			checksum, err := computeChecksum(filePath)
@@ -73,7 +89,7 @@ func (s *FileService) ProcessFiles(ctx context.Context, repositoryID string, pkg
 			file := &File{
 				ID:           id,
 				RepositoryID: repositoryID,
-				Path:         filePath,
+				Path:         relPath,
 				Name:         filepath.Base(filePath),
 				Extension:    strings.TrimPrefix(ext, "."),
 				Checksum:     checksum,
@@ -92,6 +108,16 @@ func (s *FileService) ProcessFiles(ctx context.Context, repositoryID string, pkg
 	}
 
 	return fileMap, nil
+}
+
+// RelPath converts an absolute path inside the clone to the repo-relative form
+// stored on File.Path, so it matches the paths a provider webhook reports.
+func RelPath(repoRoot, absPath string) (string, error) {
+	rel, err := filepath.Rel(repoRoot, absPath)
+	if err != nil {
+		return "", fmt.Errorf("relativise %s against %s: %w", absPath, repoRoot, err)
+	}
+	return filepath.ToSlash(rel), nil
 }
 
 func computeChecksum(path string) (string, error) {

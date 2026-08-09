@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -65,7 +66,11 @@ func NewClient(cfg Config) *Client {
 
 	appID, err := strconv.ParseInt(cfg.AppID, 10, 64)
 	if err != nil {
-		return c // leaves ok=false → Configured() reports not set up
+		// Leaves ok=false → Configured() reports not set up. Log it, or a
+		// malformed GITHUB_APP_ID looks identical to no GitHub App at all.
+		slog.Warn("github app id is not a number, github integration disabled",
+			"app_id", cfg.AppID, "error", err)
+		return c
 	}
 
 	atr := ghinstallation.NewAppsTransportFromPrivateKey(http.DefaultTransport, appID, cfg.PrivateKey)
@@ -73,6 +78,7 @@ func NewClient(cfg Config) *Client {
 		github.WithHTTPClient(&http.Client{Transport: atr, Timeout: httpTimeout}),
 	)
 	if err != nil {
+		slog.Warn("failed to build github client, github integration disabled", "error", err)
 		return c
 	}
 

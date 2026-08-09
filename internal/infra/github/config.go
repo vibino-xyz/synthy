@@ -6,6 +6,7 @@ package github
 import (
 	"crypto/rsa"
 	"errors"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -42,12 +43,18 @@ func NewConfigFromEnv() (Config, error) {
 
 	pem, err := readPrivateKeyPEM()
 	if err != nil || appID == "" || slug == "" || len(pem) == 0 {
+		// Staying unconfigured is intentional, but silently is not: a typo in
+		// the key path disables the whole GitHub integration with no trace.
+		slog.Warn("github app not configured",
+			"has_app_id", appID != "", "has_slug", slug != "",
+			"has_private_key", len(pem) > 0, "error", err)
 		return Config{Configured: false}, nil
 	}
 
 	key, err := jwt.ParseRSAPrivateKeyFromPEM(pem)
 	if err != nil {
 		// Present but unparseable — treat as unconfigured rather than crash.
+		slog.Warn("github app private key is present but unparseable", "error", err)
 		return Config{Configured: false}, nil
 	}
 

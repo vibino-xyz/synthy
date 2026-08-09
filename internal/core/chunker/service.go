@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	csymbol "github.com/vibino-xyz/synthy/internal/core/symbol"
@@ -30,29 +31,46 @@ func Build(filePath string) ([]*CodeChunk, error) {
 	}
 
 	var chunks []*CodeChunk
+	var buildErr error
+
+	add := func(n ast.Node, chunkType ChunkType) {
+		if buildErr != nil {
+			return
+		}
+		chunk, err := buildChunk(fset, n, chunkType)
+		if err != nil {
+			buildErr = err
+			return
+		}
+		chunks = append(chunks, chunk)
+	}
 
 	ast.Inspect(node, func(n ast.Node) bool {
 		switch decl := n.(type) {
 		case *ast.FuncDecl:
-			chunks = append(chunks, buildFunctionChunk(fset, decl))
+			add(decl, ChunkTypeFunction)
 		case *ast.GenDecl:
 			for _, spec := range decl.Specs {
-				switch s := spec.(type) {
-				case *ast.TypeSpec:
-					switch t := s.Type.(type) {
-					case *ast.StructType:
-						chunks = append(chunks, buildStructChunk(fset, s, t))
-					case *ast.InterfaceType:
-						chunks = append(chunks, buildInterfaceChunk(fset, s, t))
+				if s, ok := spec.(*ast.TypeSpec); ok {
+					switch s.Type.(type) {
+					case *ast.StructType, *ast.InterfaceType:
+						add(s, ChunkTypeType)
 					}
 				}
 			}
 		}
-		return true
+		return buildErr == nil
 	})
+	if buildErr != nil {
+		return nil, fmt.Errorf("build chunks for %s: %w", filePath, buildErr)
+	}
 
 	if len(chunks) == 0 {
-		chunks = append(chunks, buildFileChunk(fset, node))
+		chunk, err := buildChunk(fset, node, ChunkTypeOther)
+		if err != nil {
+			return nil, fmt.Errorf("build file chunk for %s: %w", filePath, err)
+		}
+		chunks = append(chunks, chunk)
 	}
 
 	return chunks, nil
@@ -80,10 +98,19 @@ func (s *ChunkService) ProcessFile(ctx context.Context, repositoryID, fileID, fi
 	}
 
 	var chunks []*CodeChunk
+	var unmatched, blank int
 	for _, chunk := range rawChunks {
+		// A blank chunk embeds to nothing and is rejected by the embedding API,
+		// so never persist one — it would poison the queue for every retry.
+		if strings.TrimSpace(chunk.Content) == "" {
+			blank++
+			continue
+		}
+
 		sym := matchSymbol(fileSymbols, chunk.StartLine, chunk.EndLine)
 		if sym == nil {
-			continue // symbol_id is NOT NULL; skip unmatched chunks
+			unmatched++ // symbol_id is NOT NULL; skip unmatched chunks
+			continue
 		}
 
 		id, err := generateID()
@@ -101,6 +128,14 @@ func (s *ChunkService) ProcessFile(ctx context.Context, repositoryID, fileID, fi
 		chunk.UpdatedAt = now
 
 		chunks = append(chunks, chunk)
+	}
+
+	// Dropped chunks are silent data loss otherwise: the file indexes "fine"
+	// while parts of it are simply missing from retrieval.
+	if unmatched > 0 || blank > 0 {
+		slog.WarnContext(ctx, "skipped chunks",
+			"file", filePath, "unmatched_symbol", unmatched, "blank_content", blank,
+			"kept", len(chunks), "total", len(rawChunks))
 	}
 
 	if len(chunks) == 0 {
@@ -124,65 +159,28 @@ func matchSymbol(symbols []*csymbol.Symbol, startLine, endLine int) *csymbol.Sym
 	return nil
 }
 
-func buildFunctionChunk(fset *token.FileSet, fn *ast.FuncDecl) *CodeChunk {
-	startLine := fset.Position(fn.Pos()).Line
-	endLine := fset.Position(fn.End()).Line
-	content := extractSource(fset, fn)
+func buildChunk(fset *token.FileSet, node ast.Node, chunkType ChunkType) (*CodeChunk, error) {
+	content, err := extractSource(fset, node)
+	if err != nil {
+		return nil, err
+	}
 
 	return &CodeChunk{
 		Content:     content,
 		ContentHash: sha256hex(content),
-		Type:        ChunkTypeFunction,
-		StartLine:   startLine,
-		EndLine:     endLine,
-	}
+		Type:        chunkType,
+		StartLine:   fset.Position(node.Pos()).Line,
+		EndLine:     fset.Position(node.End()).Line,
+	}, nil
 }
 
-func buildStructChunk(fset *token.FileSet, ts *ast.TypeSpec, _ *ast.StructType) *CodeChunk {
-	startLine := fset.Position(ts.Pos()).Line
-	endLine := fset.Position(ts.End()).Line
-	content := extractSource(fset, ts)
-
-	return &CodeChunk{
-		Content:     content,
-		ContentHash: sha256hex(content),
-		Type:        ChunkTypeType,
-		StartLine:   startLine,
-		EndLine:     endLine,
-	}
-}
-
-func buildInterfaceChunk(fset *token.FileSet, ts *ast.TypeSpec, _ *ast.InterfaceType) *CodeChunk {
-	startLine := fset.Position(ts.Pos()).Line
-	endLine := fset.Position(ts.End()).Line
-	content := extractSource(fset, ts)
-
-	return &CodeChunk{
-		Content:     content,
-		ContentHash: sha256hex(content),
-		Type:        ChunkTypeType,
-		StartLine:   startLine,
-		EndLine:     endLine,
-	}
-}
-
-func buildFileChunk(fset *token.FileSet, node ast.Node) *CodeChunk {
-	startLine := fset.Position(node.Pos()).Line
-	endLine := fset.Position(node.End()).Line
-	content := extractSource(fset, node)
-
-	return &CodeChunk{
-		Content:     content,
-		ContentHash: sha256hex(content),
-		Type:        ChunkTypeOther,
-		StartLine:   startLine,
-		EndLine:     endLine,
-	}
-}
-
-func extractSource(fset *token.FileSet, node ast.Node) string {
+// extractSource returns the exact source text of node. It relies on the byte
+// offsets go/token already computes: node.End() legitimately points one past
+// the final byte when node is the last declaration in a file, so the bounds
+// check below accepts endOffset == len(content).
+func extractSource(fset *token.FileSet, node ast.Node) (string, error) {
 	if node == nil {
-		return ""
+		return "", fmt.Errorf("extract source: nil node")
 	}
 
 	start := fset.Position(node.Pos())
@@ -190,37 +188,15 @@ func extractSource(fset *token.FileSet, node ast.Node) string {
 
 	content, err := os.ReadFile(start.Filename)
 	if err != nil {
-		slog.Error("failed to read file content", "error", err)
-		return ""
+		return "", fmt.Errorf("read %s: %w", start.Filename, err)
 	}
 
-	startOffset := offsetFromPosition(content, start)
-	endOffset := offsetFromPosition(content, end)
-
-	if startOffset == -1 || endOffset == -1 || startOffset > endOffset {
-		slog.Error("invalid offsets for source extraction", "startOffset", startOffset, "endOffset", endOffset)
-		return ""
+	if start.Offset < 0 || end.Offset > len(content) || start.Offset > end.Offset {
+		return "", fmt.Errorf("extract source from %s: offsets [%d,%d) out of bounds for %d bytes",
+			start.Filename, start.Offset, end.Offset, len(content))
 	}
 
-	return string(content[startOffset:endOffset])
-}
-
-func offsetFromPosition(content []byte, pos token.Position) int {
-	line := 1
-	col := 1
-
-	for i, b := range content {
-		if line == pos.Line && col == pos.Column {
-			return i
-		}
-		if b == '\n' {
-			line++
-			col = 1
-		} else {
-			col++
-		}
-	}
-	return -1
+	return string(content[start.Offset:end.Offset]), nil
 }
 
 func sha256hex(s string) string {

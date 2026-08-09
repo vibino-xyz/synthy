@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 
 	"github.com/joho/godotenv"
 	"github.com/vibino-xyz/commons/jwtauth"
 	"github.com/vibino-xyz/commons/ratelimit"
-	"github.com/vibino-xyz/commons/whttp"
+	"github.com/vibino-xyz/commons/vhttp"
 	"github.com/vibino-xyz/synthy/internal/core/calls"
 	"github.com/vibino-xyz/synthy/internal/core/chunker"
 	cfile "github.com/vibino-xyz/synthy/internal/core/file"
@@ -85,8 +86,8 @@ func main() {
 		),
 
 		// Interface controllers — HTTP
-		whttp.DefaultServer(
-			whttp.WithControllers(
+		vhttp.DefaultServer(
+			vhttp.WithControllers(
 				api.NewGitHubController,
 			),
 		),
@@ -107,11 +108,7 @@ func main() {
 		),
 
 		// Interface controllers — gRPC (query engine / compass calls in here)
-		fx.Provide(
-			rpc.NewRetrievalServer,
-			rpc.NewGRPCServer,
-		),
-		fx.Invoke(rpc.StartGRPCServer),
+		fx.Provide(rpc.NewSynthyServiceGrpcServer),
 
 		fx.Provide(
 			pinecone.NewConnection,
@@ -125,6 +122,7 @@ func main() {
 			mq.NewSummaryEventController,
 		),
 
+		fx.Invoke(GrpcServerHook),
 		fx.Invoke(repositoryEventSubscriberHook),
 		fx.Invoke(embeddingEventControllerHook),
 		fx.Invoke(summaryEventControllerHook),
@@ -182,6 +180,28 @@ func summaryEventControllerHook(lc fx.Lifecycle, controller *mq.SummaryEventCont
 		OnStop: func(_ context.Context) error {
 			cancel()
 			return controller.Stop()
+		},
+	})
+}
+
+func GrpcServerHook(lc fx.Lifecycle, s *rpc.SynthyServiceGrpcServer) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			lis, err := net.Listen("tcp", ":50051") //TODO: Make the port configurable
+			if err != nil {
+				slog.ErrorContext(ctx, "Failed to listen", "error", err)
+			}
+
+			go func() {
+				if err := s.Serve(lis); err != nil {
+					slog.Info("failed to start grpc server")
+				}
+			}()
+			return nil
+		},
+		OnStop: func(ctx context.Context) error {
+			s.GracefulStop()
+			return nil
 		},
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/vibino-xyz/synthy/internal/core/llm"
 )
@@ -36,6 +37,10 @@ type generateResponse struct {
 }
 
 func (c *LLMClient) GenerateSummary(ctx context.Context, input string) (string, error) {
+	if strings.TrimSpace(input) == "" {
+		return "", llm.ErrEmptyInput
+	}
+
 	prompt := fmt.Sprintf(`You are analyzing a code chunk.
 
 Goal:

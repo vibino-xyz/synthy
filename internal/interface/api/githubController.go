@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/vibino-xyz/commons/jwtauth"
-	"github.com/vibino-xyz/commons/whttp"
+	"github.com/vibino-xyz/commons/vhttp"
 	ghapi "github.com/vibino-xyz/synthy/internal/infra/github"
 	ghuse "github.com/vibino-xyz/synthy/internal/usecase/github"
 )
@@ -16,7 +16,7 @@ type GitHubController struct {
 	verifier *jwtauth.Verifier
 }
 
-func NewGitHubController(service *ghuse.Service, verifier *jwtauth.Verifier) whttp.Controller {
+func NewGitHubController(service *ghuse.Service, verifier *jwtauth.Verifier) vhttp.Controller {
 	return &GitHubController{service: service, verifier: verifier}
 }
 
@@ -67,14 +67,14 @@ func (c *GitHubController) handleConnect(ctx *echo.Context) error {
 		State          string `json:"state"`
 	}
 	if err := ctx.Bind(&req); err != nil {
-		return whttp.BadRequest("invalid request body")
+		return vhttp.BadRequest("invalid request body")
 	}
 	if req.InstallationID == 0 {
-		return whttp.BadRequest("installation_id is required")
+		return vhttp.BadRequest("installation_id is required")
 	}
 	// If GitHub echoed our state (the org id), it must match the caller's org.
 	if req.State != "" && req.State != claims.OrganizationId {
-		return whttp.Forbidden("installation belongs to a different organization")
+		return vhttp.Forbidden("installation belongs to a different organization")
 	}
 
 	view, err := c.service.Connect(ctx.Request().Context(), claims.OrganizationId, req.InstallationID)
@@ -129,7 +129,7 @@ func (c *GitHubController) handleBranches(ctx *echo.Context) error {
 	}
 	repo := strings.TrimSpace(ctx.QueryParam("repo"))
 	if repo == "" {
-		return whttp.BadRequest("repo query parameter is required")
+		return vhttp.BadRequest("repo query parameter is required")
 	}
 	branches, err := c.service.ListBranches(ctx.Request().Context(), claims.OrganizationId, repo)
 	if err != nil {

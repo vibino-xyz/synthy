@@ -49,14 +49,22 @@ func TestProcessRepository(t *testing.T) {
 		t.Fatalf("failed to create embedding publisher: %v", err)
 	}
 
+	fileRepo := psql.NewFileRepository(db)
+	symbolRepo := psql.NewSymbolRepository(db)
+	chunkRepo := psql.NewChunkRepository(db)
+
 	pipeline := NewAnalysisPipeline(
-		cfile.NewFileService(psql.NewFileRepository(db)),
-		csymbol.NewSymbolService(psql.NewSymbolRepository(db)),
+		cfile.NewFileService(fileRepo),
+		csymbol.NewSymbolService(symbolRepo),
 		calls.NewCallEdgeService(psql.NewCallEdgeRepository(db)),
 		imports.NewImportEdgeService(psql.NewImportEdgeRepository(db)),
-		chunker.NewChunkService(psql.NewChunkRepository(db)),
+		chunker.NewChunkService(chunkRepo),
 		psql.NewRepositoryRepository(db),
-		embeddingPublisher, // Use a no-op publisher for testing
+		fileRepo,
+		symbolRepo,
+		chunkRepo,
+		nil, // no vector store: this test does not exercise Pinecone cleanup
+		embeddingPublisher,
 	)
 
 	if err := pipeline.ProcessRepository(ctx, repoPath, RepositoryInput{

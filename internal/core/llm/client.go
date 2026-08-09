@@ -1,6 +1,14 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrEmptyInput is returned instead of calling out to a provider with input
+// that has no content. Providers reject it anyway (voyage answers 400), and a
+// failed call on a queue message that will never succeed is a poison message.
+var ErrEmptyInput = errors.New("llm: input is empty")
 
 type InputType string
 

@@ -4,7 +4,7 @@ import (
 	"errors"
 
 	"github.com/labstack/echo/v5"
-	"github.com/vibino-xyz/commons/whttp"
+	"github.com/vibino-xyz/commons/vhttp"
 	ghapi "github.com/vibino-xyz/synthy/internal/infra/github"
 	ghuse "github.com/vibino-xyz/synthy/internal/usecase/github"
 )
@@ -12,9 +12,9 @@ import (
 func githubError(err error) error {
 	switch {
 	case errors.Is(err, ghuse.ErrNotConfigured):
-		return whttp.ServiceUnavailable("GitHub App is not configured on the server")
+		return vhttp.ServiceUnavailable("GitHub App is not configured on the server")
 	case errors.Is(err, ghuse.ErrNotConnected):
-		return whttp.NotFound("GitHub is not connected for this organization")
+		return vhttp.NotFound("GitHub is not connected for this organization")
 	}
 
 	var apiErr *ghapi.APIError
@@ -22,8 +22,8 @@ func githubError(err error) error {
 		if apiErr.Status >= 400 && apiErr.Status < 500 {
 			return echo.NewHTTPError(apiErr.Status, "GitHub: "+apiErr.Message)
 		}
-		return whttp.BadGateway("GitHub request failed: " + apiErr.Message)
+		return vhttp.BadGateway("GitHub request failed: " + apiErr.Message)
 	}
 
-	return whttp.Internal("internal server error")
+	return vhttp.Internal("internal server error")
 }

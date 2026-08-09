@@ -72,6 +72,25 @@ func (r *repositoryRepository) InsertRepository(ctx context.Context, repo *repos
 	return repositoryId, err
 }
 
+func (r *repositoryRepository) UpdateRepository(ctx context.Context, repo *repository.Repository) error {
+	const query = `
+		UPDATE repository
+		SET name = $2, default_branch = $3, repository_url = $4, storage_url = $5,
+		    provider = $6, updated_at = $7
+		WHERE id = $1`
+
+	_, err := r.db.Exec(ctx, query,
+		repo.ID,
+		repo.Name,
+		repo.DefaultBranch,
+		repo.RepositoryUrl,
+		repo.StorageUrl,
+		repo.Provider,
+		repo.UpdatedAt,
+	)
+	return err
+}
+
 func (r *repositoryRepository) ListRepositoriesByOrganizationID(ctx context.Context, organizationID string) ([]*repository.Repository, error) {
 	const query = `SELECT id, organization_id, name, description, default_branch, repository_url, storage_url, provider, external_id, created_at, updated_at FROM repository WHERE organization_id = $1 ORDER BY created_at DESC`
 

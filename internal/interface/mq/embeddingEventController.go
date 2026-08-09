@@ -37,17 +37,17 @@ func (c *EmbeddingEventController) Start(ctx context.Context) error {
 
 		chunk, err := c.chunkRepository.GetChunkByID(ctx, msg.Message.ChunkID)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to get chunk by ID", "error", err)
+			fail(ctx, msg, "failed to get chunk by ID", err, "chunk_id", msg.Message.ChunkID)
 			continue
 		}
 
 		resp, err := c.embeddingClient.GenerateEmbeddings(ctx, chunk.Content, llm.InputTypeDocument)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to generate embeddings", "error", err)
+			fail(ctx, msg, "failed to generate embeddings", err, "chunk_id", chunk.ID)
 			continue
 		}
 
-		slog.InfoContext(ctx, "Generated embeddings for chunk", "chunk_id", chunk.ID, "embedding_length", len(resp), "embeddings", resp)
+		slog.InfoContext(ctx, "Generated embeddings for chunk", "chunk_id", chunk.ID, "embedding_length", len(resp))
 
 		id, err := c.idxConnection.UpsertEmbeddings(ctx, resp, map[string]any{
 			"chunk_id":      chunk.ID,
@@ -58,15 +58,22 @@ func (c *EmbeddingEventController) Start(ctx context.Context) error {
 			"language":      string(chunk.Language),
 			"start_line":    chunk.StartLine,
 			"end_line":      chunk.EndLine,
-		}, "__default__")
+		}, embedding.DefaultNamespace)
+
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to upsert embeddings", "error", err)
+			fail(ctx, msg, "failed to upsert embeddings", err, "chunk_id", chunk.ID)
 			continue
 		}
 		slog.InfoContext(ctx, "Upserted embeddings to Pinecone", "chunk_id", chunk.ID, "vector_id", id)
 
 		if err := c.chunkRepository.UpdateChunk(ctx, chunk.ID, chunker.UpdateChunkRequest{EmbeddingID: &id}); err != nil {
-			slog.ErrorContext(ctx, "failed to update chunk embedding ID", "error", err)
+			// The vector is already in Pinecone but the chunk does not point at
+			// it; drop it so the retry does not leave an orphan behind.
+			if delErr := c.idxConnection.DeleteVectors(ctx, []string{id}, embedding.DefaultNamespace); delErr != nil {
+				slog.ErrorContext(ctx, "failed to roll back orphaned vector",
+					"chunk_id", chunk.ID, "vector_id", id, "error", delErr)
+			}
+			fail(ctx, msg, "failed to update chunk embedding ID", err, "chunk_id", chunk.ID)
 			continue
 		}
 		slog.InfoContext(ctx, "Updated chunk embedding ID in database", "chunk_id", chunk.ID, "embedding_id", id)

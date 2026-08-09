@@ -18,11 +18,9 @@ import (
 const defaultTopK = 7
 
 // retrievalNamespace is the pinecone namespace queried for similar vectors. It
-// MUST match the namespace the ingestion pipeline upserts into
-// (see interface/mq/embeddingEventController.go). Per-tenant namespacing is a
-// future change that has to be applied on both the ingest and retrieval sides
-// together.
-const retrievalNamespace = "__default__"
+// is the same constant the ingestion pipeline upserts into, so the two cannot
+// drift apart.
+const retrievalNamespace = embedding.DefaultNamespace
 
 type RetrievalPipeline struct {
 	EmbeddingClient      llm.EmbeddingClient

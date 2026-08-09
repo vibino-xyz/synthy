@@ -35,20 +35,20 @@ func (c *SummaryEventController) Start(ctx context.Context) error {
 
 		chunk, err := c.chunkRepository.GetChunkByID(ctx, msg.Message.ChunkID)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to get chunk by ID", "error", err)
+			fail(ctx, msg, "failed to get chunk by ID", err, "chunk_id", msg.Message.ChunkID)
 			continue
 		}
 
 		resp, err := c.llmClient.GenerateSummary(ctx, chunk.Content)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to generate summary", "error", err)
+			fail(ctx, msg, "failed to generate summary", err, "chunk_id", chunk.ID)
 			continue
 		}
 
-		slog.InfoContext(ctx, "Generated summary", "summary", resp)
+		slog.InfoContext(ctx, "Generated summary", "chunk_id", chunk.ID)
 
 		if err := c.chunkRepository.UpdateChunk(ctx, chunk.ID, chunker.UpdateChunkRequest{Summary: &resp}); err != nil {
-			slog.ErrorContext(ctx, "failed to update chunk summary", "error", err)
+			fail(ctx, msg, "failed to update chunk summary", err, "chunk_id", chunk.ID)
 			continue
 		}
 		slog.InfoContext(ctx, "Updated chunk summary in database", "chunk_id", chunk.ID)
